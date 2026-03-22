@@ -1,22 +1,29 @@
-import time
+import asyncio
 import urllib.parse
-from playwright.sync_api import sync_playwright
+import time
+from playwright.async_api import async_playwright
 
-def search_and_add_zepto(page, item):
-    # Clean the item name (remove special characters like '|')
+async def block_aggressively(route):
+    """Block images, fonts, and media to speed up page loads."""
+    if route.request.resource_type in ["image", "media", "font"]:
+        await route.abort()
+    else:
+        await route.continue_()
+
+async def search_and_add_zepto(page, item):
     clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
     query = urllib.parse.quote(clean_item)
     url = f"https://www.zepto.com/search?q={query}"
-    print(f"[Zepto] Searching for: {clean_item} -> {url}")
+    print(f"[Zepto] Searching for: {clean_item}")
     try:
-        page.goto(url, timeout=45000, wait_until="domcontentloaded")
-    except:
-        print(f"[Zepto] Timeout while loading {url}, proceeding anyway...")
-    time.sleep(4)
-
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except Exception as e:
+        print(f"[Zepto] Navigation error: {e}")
+    
+    await asyncio.sleep(3)
+    
     # Click Add to Cart
-    print(f"[Zepto] Clicking Add To Cart for {item}...")
-    page.evaluate("""
+    await page.evaluate("""
         const buttons = document.querySelectorAll("button");
         for (let btn of buttons) {
             if (btn.textContent.includes('Add To Cart') || btn.textContent === 'Add' || btn.textContent.includes('Add to cart')) {
@@ -25,43 +32,21 @@ def search_and_add_zepto(page, item):
             }
         }
     """)
-    time.sleep(2)
+    await asyncio.sleep(1)
 
-def get_zepto_cart_value(page, items_list):
-    for item in items_list:
-        search_and_add_zepto(page, item.strip())
-        
-    print("[Zepto] Extracting cart value...")
-    cart_value = "Not Found"
-    try:
-        val = page.evaluate("""
-            let el = document.querySelector("[data-testid='cart-btn']");
-            if (el) return el.innerText;
-            return null;
-        """)
-        if val:
-            cart_value = val.strip().replace('\n', ' ')
-    except Exception as e:
-        cart_value = f"Error: {e}"
-
-    print(f"[Zepto] Cart Value extracted: {cart_value}")
-    return cart_value
-
-
-def search_and_add_blinkit(page, item):
+async def search_and_add_blinkit(page, item):
     clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
     query = urllib.parse.quote(clean_item)
     url = f"https://blinkit.com/s/?q={query}"
-    print(f"[Blinkit] Searching for: {clean_item} -> {url}")
+    print(f"[Blinkit] Searching for: {clean_item}")
     try:
-        page.goto(url, timeout=45000, wait_until="domcontentloaded")
-    except:
-        print(f"[Blinkit] Timeout while loading {url}, proceeding anyway...")
-    time.sleep(4)
-
-    print(f"[Blinkit] Clicking ADD for {item}...")
-    page.evaluate("""
-        // The ADD button in blinkit search results is often a div or button
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except Exception as e:
+        print(f"[Blinkit] Navigation error: {e}")
+    
+    await asyncio.sleep(3)
+    
+    await page.evaluate("""
         const buttons = document.querySelectorAll("div, button");
         for (let btn of buttons) {
             if (btn.textContent.trim() === 'ADD' || btn.textContent.trim() === 'Add') {
@@ -70,47 +55,21 @@ def search_and_add_blinkit(page, item):
             }
         }
     """)
-    time.sleep(2)
+    await asyncio.sleep(1)
 
-def get_blinkit_cart_value(page, items_list):
-    for item in items_list:
-        search_and_add_blinkit(page, item.strip())
-        
-    print("[Blinkit] Extracting cart value...")
-    cart_value = "Not Found"
-    try:
-        val = page.evaluate("""
-            let els = document.querySelectorAll("div");
-            for(let e of els){
-                // Blinkit cart bottom bar usually contains View Cart and ₹
-                if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                    return e.innerText;
-                }
-            }
-            return null;
-        """)
-        if val:
-            cart_value = val.strip().replace('\n', ' ')
-    except Exception as e:
-        cart_value = f"Error: {e}"
-
-    print(f"[Blinkit] Cart Value extracted: {cart_value}")
-    return cart_value
-
-
-def search_and_add_instamart(page, item):
+async def search_and_add_instamart(page, item):
     clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
     query = urllib.parse.quote(clean_item)
     url = f"https://www.swiggy.com/instamart/search?custom_back=true&query={query}"
-    print(f"[Instamart] Searching for: {clean_item} -> {url}")
+    print(f"[Instamart] Searching for: {clean_item}")
     try:
-        page.goto(url, timeout=45000, wait_until="domcontentloaded")
-    except:
-        print(f"[Instamart] Timeout while loading {url}, proceeding anyway...")
-    time.sleep(4)
-
-    print(f"[Instamart] Clicking Add for {item}...")
-    page.evaluate("""
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except Exception as e:
+        print(f"[Instamart] Navigation error: {e}")
+    
+    await asyncio.sleep(3)
+    
+    await page.evaluate("""
         const buttons = document.querySelectorAll("button, div");
         for (let btn of buttons) {
             if (btn.textContent.trim() === 'ADD' || btn.textContent.trim() === 'Add') {
@@ -119,16 +78,61 @@ def search_and_add_instamart(page, item):
             }
         }
     """)
-    time.sleep(2)
+    await asyncio.sleep(1)
 
-def get_instamart_cart_value(page, items_list):
+async def fetch_zepto(context, items_list):
+    page = await context.new_page()
+    await page.route("**/*", block_aggressively)
     for item in items_list:
-        search_and_add_instamart(page, item.strip())
-        
-    print("[Instamart] Extracting cart value...")
+        await search_and_add_zepto(page, item)
+    
     cart_value = "Not Found"
     try:
-        val = page.evaluate("""
+        val = await page.evaluate("""
+            let el = document.querySelector("[data-testid='cart-btn']");
+            if (el) return el.innerText;
+            return null;
+        """)
+        if val:
+            cart_value = val.strip().replace('\n', ' ')
+    except:
+        pass
+    await page.close()
+    return cart_value
+
+async def fetch_blinkit(context, items_list):
+    page = await context.new_page()
+    await page.route("**/*", block_aggressively)
+    for item in items_list:
+        await search_and_add_blinkit(page, item)
+    
+    cart_value = "Not Found"
+    try:
+        val = await page.evaluate("""
+            let els = document.querySelectorAll("div");
+            for(let e of els){
+                if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
+                    return e.innerText;
+                }
+            }
+            return null;
+        """)
+        if val:
+            cart_value = val.strip().replace('\n', ' ')
+    except:
+        pass
+    await page.close()
+    return cart_value
+
+async def fetch_instamart(context, items_list):
+    page = await context.new_page()
+    await page.route("**/*", block_aggressively)
+    for item in items_list:
+        await search_and_add_instamart(page, item)
+    
+    cart_value = "Not Found"
+    try:
+        val = await page.evaluate("""
             let els = document.querySelectorAll("div, button, a");
             for(let e of els){
                 if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
@@ -139,59 +143,45 @@ def get_instamart_cart_value(page, items_list):
         """)
         if val:
             cart_value = val.strip().replace('\n', ' ')
-    except Exception as e:
-        cart_value = f"Error: {e}"
-
-    print(f"[Instamart] Cart Value extracted: {cart_value}")
+    except:
+        pass
+    await page.close()
     return cart_value
 
-
-def compare_prices(items_text):
-    print(f"🚀 Starting Price Comparison (Search-Based) for: {items_text}")
-    
-    # Simple parsing: split by commas if commas exist, else split by newlines
+async def compare_prices(items_text):
     if ',' in items_text:
         items_list = [i.strip() for i in items_text.split(',')]
     else:
         items_list = [i.strip() for i in items_text.split('\n')]
-        
-    items_list = [i for i in items_list if i] # remove empty strings
-    
-    results = {}
-    with sync_playwright() as p:
-        # Launching Firefox in headless mode for server deployment
-        browser = p.firefox.launch(headless=True)
-        # Using a context with Delhi geolocation (or generic) to bypass some location prompts
-        context = browser.new_context(
+    items_list = [i for i in items_list if i]
+
+    async with async_playwright() as p:
+        browser = await p.firefox.launch(headless=True)
+        context = await browser.new_context(
             geolocation={"latitude": 28.6139, "longitude": 77.2090},
             permissions=["geolocation"],
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
         )
-        
-        # We need a separate page for each to avoid cart conflicts across domains holding state?
-        # Actually different domains don't share carts anyway.
-        
-        page_z = context.new_page()
-        results['Zepto'] = get_zepto_cart_value(page_z, items_list)
-        
-        page_b = context.new_page()
-        results['Blinkit'] = get_blinkit_cart_value(page_b, items_list)
-        
-        page_i = context.new_page()
-        results['Swiggy Instamart'] = get_instamart_cart_value(page_i, items_list)
-        
-        browser.close()
 
-    output = []
-    output.append("🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n")
-    output.append("📊 **CART TOTALS:**")
+        # Run all three platforms concurrently
+        zepto_task = fetch_zepto(context, items_list)
+        blinkit_task = fetch_blinkit(context, items_list)
+        instamart_task = fetch_instamart(context, items_list)
+
+        results_list = await asyncio.gather(zepto_task, blinkit_task, instamart_task, return_exceptions=True)
+        
+        platforms = ["Zepto", "Blinkit", "Swiggy Instamart"]
+        results = {}
+        for i, res in enumerate(results_list):
+            if isinstance(res, Exception):
+                results[platforms[i]] = f"Error: {res}"
+            else:
+                results[platforms[i]] = res
+
+        await browser.close()
+
+    output = ["🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n", "📊 **CART TOTALS (PARALLEL MODE):**"]
     for platform, value in results.items():
         output.append(f"**{platform}**: {value}")
-        
-    output.append("\n_Note: This uses the first available item on search results, which might occasionally differ in brand or size._")
-    
+    output.append("\n_Note: Teeno platforms ek saath check kiye gaye hain (Fast Mode)._")
     return "\n".join(output)
-
-if __name__ == "__main__":
-    test_items = "Amul Taza Milk, Lay's Classic Salted"
-    print(compare_prices(test_items))

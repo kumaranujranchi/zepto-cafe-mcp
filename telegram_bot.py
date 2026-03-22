@@ -31,7 +31,7 @@ def run_health_server():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "👋 Welcome to the Smart Price Comparator Bot!\n\n"
+        "👋 Welcome to the Smart Price Comparator Bot! (Fast Mode 🚀)\n\n"
         "Just send me a list of groceries you want to buy, separated by commas or new lines.\n\n"
         "Example:\n"
         "`Amul Taza Milk, Lay's Classic Salted, Bread`\n\n"
@@ -47,13 +47,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     msg = await context.bot.send_message(
         chat_id=update.effective_chat.id, 
-        text=f"⏳ *Searching and calculating prices...*\nThis might take a minute depending on the number of items.",
+        text=f"⏳ *Searching and calculating prices (Parallel Mode)...*\nThis should be much faster than before!",
         parse_mode='Markdown'
     )
     
     try:
-        # Run playwright automation in a separate thread so we don't block the async event loop
-        result = await asyncio.to_thread(compare_prices, items_text)
+        # compare_prices is now an async function, we call it directly
+        result = await compare_prices(items_text)
         
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
@@ -63,10 +63,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logger.error(f"Error during comparison: {e}")
+        error_msg = f"❌ An error occurred: {str(e)}"
+        if len(error_msg) > 4000:
+            error_msg = error_msg[:4000] + "..."
         await context.bot.edit_message_text(
             chat_id=update.effective_chat.id,
             message_id=msg.message_id,
-            text=f"❌ An error occurred: {str(e)}"
+            text=error_msg
         )
 
 if __name__ == '__main__':
@@ -91,5 +94,5 @@ if __name__ == '__main__':
     application.add_handler(start_handler)
     application.add_handler(message_handler)
     
-    logger.info("Bot started successfully. Waiting for grocery lists...")
+    logger.info("Bot started successfully. Waiting for grocery lists (Parallel Mode)...")
     application.run_polling()
