@@ -3,11 +3,15 @@ import urllib.parse
 from playwright.sync_api import sync_playwright
 
 def search_and_add_zepto(page, item):
-    query = urllib.parse.quote(item)
+    # Clean the item name (remove special characters like '|')
+    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
+    query = urllib.parse.quote(clean_item)
     url = f"https://www.zepto.com/search?q={query}"
-    print(f"[Zepto] Searching for: {item} -> {url}")
-    page.goto(url)
-    page.wait_for_load_state("networkidle")
+    print(f"[Zepto] Searching for: {clean_item} -> {url}")
+    try:
+        page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except:
+        print(f"[Zepto] Timeout while loading {url}, proceeding anyway...")
     time.sleep(4)
 
     # Click Add to Cart
@@ -45,11 +49,14 @@ def get_zepto_cart_value(page, items_list):
 
 
 def search_and_add_blinkit(page, item):
-    query = urllib.parse.quote(item)
+    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
+    query = urllib.parse.quote(clean_item)
     url = f"https://blinkit.com/s/?q={query}"
-    print(f"[Blinkit] Searching for: {item} -> {url}")
-    page.goto(url)
-    page.wait_for_load_state("networkidle")
+    print(f"[Blinkit] Searching for: {clean_item} -> {url}")
+    try:
+        page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except:
+        print(f"[Blinkit] Timeout while loading {url}, proceeding anyway...")
     time.sleep(4)
 
     print(f"[Blinkit] Clicking ADD for {item}...")
@@ -92,11 +99,14 @@ def get_blinkit_cart_value(page, items_list):
 
 
 def search_and_add_instamart(page, item):
-    query = urllib.parse.quote(item)
+    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
+    query = urllib.parse.quote(clean_item)
     url = f"https://www.swiggy.com/instamart/search?custom_back=true&query={query}"
-    print(f"[Instamart] Searching for: {item} -> {url}")
-    page.goto(url)
-    page.wait_for_load_state("networkidle")
+    print(f"[Instamart] Searching for: {clean_item} -> {url}")
+    try:
+        page.goto(url, timeout=45000, wait_until="domcontentloaded")
+    except:
+        print(f"[Instamart] Timeout while loading {url}, proceeding anyway...")
     time.sleep(4)
 
     print(f"[Instamart] Clicking Add for {item}...")
