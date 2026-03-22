@@ -45,8 +45,6 @@ RUN playwright install firefox
 RUN playwright install-deps firefox
 
 # Copy application code
-COPY zepto_api_server.py .
-COPY zepto_mcp_server.py .
 COPY price_comparator.py .
 COPY telegram_bot.py .
 
