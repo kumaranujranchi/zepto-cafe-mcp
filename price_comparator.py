@@ -99,22 +99,26 @@ async def compare_prices(items_text):
         for item in items_list:
             await search_and_add_zepto(page, item)
         results['Zepto'] = await page.evaluate("""
-            let el = document.querySelector("[data-testid='cart-btn']");
-            return el ? el.innerText.replace('\\n', ' ') : "Not Found";
+            () => {
+                let el = document.querySelector("[data-testid='cart-btn']");
+                return el ? el.innerText.split('\\n').join(' ') : "Not Found";
+            }
         """)
 
-        # Blinkit (Clear cart or new context? Let's just go to URL)
+        # Blinkit
         print("--- Blinkit ---")
         for item in items_list:
             await search_and_add_blinkit(page, item)
         results['Blinkit'] = await page.evaluate("""
-            let els = document.querySelectorAll("div");
-            for(let e of els){
-                if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                    return e.innerText.replace('\\n', ' ');
+            () => {
+                let els = document.querySelectorAll("div");
+                for(let e of els){
+                    if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
+                        return e.innerText.split('\\n').join(' ');
+                    }
                 }
+                return "Not Found";
             }
-            return "Not Found";
         """)
 
         # Instamart
@@ -122,13 +126,15 @@ async def compare_prices(items_text):
         for item in items_list:
             await search_and_add_instamart(page, item)
         results['Swiggy Instamart'] = await page.evaluate("""
-            let els = document.querySelectorAll("div, button, a");
-            for(let e of els){
-                if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                    return e.innerText.replace('\\n', ' ');
+            () => {
+                let els = document.querySelectorAll("div, button, a");
+                for(let e of els){
+                    if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
+                        return e.innerText.split('\\n').join(' ');
+                    }
                 }
+                return "Not Found";
             }
-            return "Not Found";
         """)
 
         await browser.close()
