@@ -1,6 +1,9 @@
 import logging
 import os
 import asyncio
+import threading
+import uvicorn
+from fastapi import FastAPI
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -12,6 +15,19 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# --- Dummy Health Check Server for Koyeb ---
+app = FastAPI()
+
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "message": "Price Comparator Bot is running"}
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+# -------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
@@ -56,6 +72,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
     # Load environment variables from .env file (if running locally)
     load_dotenv()
+    
+    # Start the health check server in a separate thread so it doesn't block the bot
+    threading.Thread(target=run_health_server, daemon=True).start()
     
     # Ensure TELEGRAM_BOT_TOKEN is set in the environment
     token = os.environ.get("TELEGRAM_BOT_TOKEN")

@@ -54,5 +54,8 @@ COPY telegram_bot.py .
 RUN mkdir -p /app/zepto_firefox_data
 
 # Set environment variables
+ENV PORT=8000
+EXPOSE 8000
+
 # Run the server
 CMD ["python", "telegram_bot.py"]
