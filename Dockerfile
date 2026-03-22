@@ -40,16 +40,16 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers (Firefox only to save space)
-RUN playwright install firefox
-RUN playwright install-deps firefox
+# Install Playwright browsers (Chromium only to save space)
+RUN playwright install chromium
+RUN playwright install-deps chromium
 
 # Copy application code
 COPY price_comparator.py .
 COPY telegram_bot.py .
 
-# Create directory for browser data (will be mounted as volume in production)
-RUN mkdir -p /app/zepto_firefox_data
+# Create directory for browser data
+RUN mkdir -p /app/playwright_data
 
 # Set environment variables
 ENV PORT=8000
