@@ -75,6 +75,15 @@ async def search_and_add_instamart(page, item):
         print(f"[Instamart] Error adding {item}: {e}")
 
 async def compare_prices(items_text):
+    try:
+        # Wrap everything in a 180s global timeout to avoid indefinite hanging
+        return await asyncio.wait_for(_compare_prices_internal(items_text), timeout=240.0)
+    except asyncio.TimeoutError:
+        return "❌ **Timeout Error:** Boht zyada time lag raha hai. Shayad platforms humein block kar rahe hain. Kripya thodi der baad try karein."
+    except Exception as e:
+        return f"❌ **General Error:** {str(e)}"
+
+async def _compare_prices_internal(items_text):
     if ',' in items_text:
         items_list = [i.strip() for i in items_text.split(',')]
     else:
@@ -84,62 +93,78 @@ async def compare_prices(items_text):
     results = {}
     
     async with async_playwright() as p:
+        print("[System] Launching browser...")
         browser = await p.firefox.launch(headless=True)
-        # Single context and page to save memory on 512MB RAM
         context = await browser.new_context(
-            geolocation={"latitude": 28.6139, "longitude": 77.2090},
+            geolocation={"latitude": 12.9716, "longitude": 77.5946}, # Bangalore location
             permissions=["geolocation"],
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0"
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
         await page.route("**/*", block_aggressively)
 
         # Zepto
-        print("--- Zepto ---")
-        for item in items_list:
-            await search_and_add_zepto(page, item)
-        results['Zepto'] = await page.evaluate("""
-            () => {
-                let el = document.querySelector("[data-testid='cart-btn']");
-                return el ? el.innerText.split('\\n').join(' ') : "Not Found";
-            }
-        """)
+        try:
+            print("--- Starting Zepto ---")
+            for item in items_list:
+                await search_and_add_zepto(page, item)
+            results['Zepto'] = await page.evaluate("""
+                () => {
+                    let el = document.querySelector("[data-testid='cart-btn']");
+                    return el ? el.innerText.split('\\n').join(' ') : "Not Found";
+                }
+            """)
+            print(f"[Zepto] Final: {results['Zepto']}")
+        except Exception as e:
+            print(f"[Zepto] Failed: {e}")
+            results['Zepto'] = "Error/Not Found"
 
         # Blinkit
-        print("--- Blinkit ---")
-        for item in items_list:
-            await search_and_add_blinkit(page, item)
-        results['Blinkit'] = await page.evaluate("""
-            () => {
-                let els = document.querySelectorAll("div");
-                for(let e of els){
-                    if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                        return e.innerText.split('\\n').join(' ');
+        try:
+            print("--- Starting Blinkit ---")
+            for item in items_list:
+                await search_and_add_blinkit(page, item)
+            results['Blinkit'] = await page.evaluate("""
+                () => {
+                    let els = document.querySelectorAll("div");
+                    for(let e of els){
+                        if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
+                            return e.innerText.split('\\n').join(' ');
+                        }
                     }
+                    return "Not Found";
                 }
-                return "Not Found";
-            }
-        """)
+            """)
+            print(f"[Blinkit] Final: {results['Blinkit']}")
+        except Exception as e:
+            print(f"[Blinkit] Failed: {e}")
+            results['Blinkit'] = "Error/Not Found"
 
         # Instamart
-        print("--- Instamart ---")
-        for item in items_list:
-            await search_and_add_instamart(page, item)
-        results['Swiggy Instamart'] = await page.evaluate("""
-            () => {
-                let els = document.querySelectorAll("div, button, a");
-                for(let e of els){
-                    if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                        return e.innerText.split('\\n').join(' ');
+        try:
+            print("--- Starting Instamart ---")
+            for item in items_list:
+                await search_and_add_instamart(page, item)
+            results['Swiggy Instamart'] = await page.evaluate("""
+                () => {
+                    let els = document.querySelectorAll("div, button, a");
+                    for(let e of els){
+                        if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
+                            return e.innerText.split('\\n').join(' ');
+                        }
                     }
+                    return "Not Found";
                 }
-                return "Not Found";
-            }
-        """)
+            """)
+            print(f"[Instamart] Final: {results['Swiggy Instamart']}")
+        except Exception as e:
+            print(f"[Instamart] Failed: {e}")
+            results['Swiggy Instamart'] = "Error/Not Found"
 
         await browser.close()
+        print("[System] Browser closed.")
 
-    output = ["🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n", "📊 **CART TOTALS (Optimized Mode):**"]
+    output = ["🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n", "📊 **CART TOTALS:**"]
     for platform, value in results.items():
         output.append(f"**{platform}**: {value}")
     
