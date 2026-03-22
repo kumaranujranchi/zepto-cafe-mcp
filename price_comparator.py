@@ -1,196 +1,99 @@
 import asyncio
 import urllib.parse
 import time
-import random
+import os
 from playwright.async_api import async_playwright
 
-async def block_aggressively(route):
-    """Block images, fonts, and media to speed up page loads."""
-    if route.request.resource_type in ["image", "media", "font"]:
+async def block_media(route):
+    if route.request.resource_type in ["media", "font"]:
         await route.abort()
     else:
         await route.continue_()
 
-async def search_and_add_zepto(page, item):
-    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
-    query = urllib.parse.quote(clean_item)
-    url = f"https://www.zepto.com/search?q={query}"
-    print(f"[Zepto] Searching for: {clean_item}")
+async def search_and_add_generic(page, platform, item, url):
+    print(f"[{platform}] Searching for: {item}")
     try:
-        # Lower expectations for load state
         await page.goto(url, timeout=60000, wait_until="commit")
-        await asyncio.sleep(5) # Give it time to render after commit
+        await asyncio.sleep(6) # Wait for results
         
-        # Click Add to Cart
-        await page.evaluate("""
+        # Try to click ADD button
+        success = await page.evaluate("""
             () => {
-                const buttons = document.querySelectorAll("button");
-                for (let btn of buttons) {
-                    let txt = btn.textContent.toLowerCase();
-                    if (txt.includes('add') || txt === 'add') {
-                        btn.click();
+                const addPhrases = ['ADD', 'Add to cart', 'Add To Cart', 'Add'];
+                const els = document.querySelectorAll('button, div, span, a');
+                for (let el of els) {
+                    let txt = el.textContent.trim();
+                    if (addPhrases.includes(txt) || (txt.toLowerCase() === 'add' && el.tagName === 'BUTTON')) {
+                        el.click();
                         return true;
                     }
                 }
                 return false;
             }
         """)
+        print(f"[{platform}] Click success: {success}")
         await asyncio.sleep(2)
     except Exception as e:
-        print(f"[Zepto] Error adding {item}: {e}")
+        print(f"[{platform}] Error: {e}")
 
-async def search_and_add_blinkit(page, item):
-    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
-    query = urllib.parse.quote(clean_item)
-    url = f"https://blinkit.com/s/?q={query}"
-    print(f"[Blinkit] Searching for: {clean_item}")
+async def get_cart_value(page, platform):
     try:
-        await page.goto(url, timeout=60000, wait_until="commit")
-        await asyncio.sleep(5)
-        await page.evaluate("""
+        return await page.evaluate("""
             () => {
-                const buttons = document.querySelectorAll("div, button");
-                for (let btn of buttons) {
-                    let txt = btn.textContent.trim().toUpperCase();
-                    if (txt === 'ADD' || txt.includes('ADD TO CART')) {
-                        btn.click();
-                        return true;
+                const els = document.querySelectorAll('div, button, a, span');
+                for (let e of els) {
+                    let txt = e.textContent;
+                    if (txt.includes('₹') && (txt.toLowerCase().includes('view cart') || txt.toLowerCase().includes('checkout') || txt.toLowerCase().includes('cart'))) {
+                        return txt.split('\\n').join(' ').trim();
                     }
                 }
-                return false;
+                return "Not Found";
             }
         """)
-        await asyncio.sleep(2)
-    except Exception as e:
-        print(f"[Blinkit] Error adding {item}: {e}")
-
-async def search_and_add_instamart(page, item):
-    clean_item = "".join(c for c in item if c.isalnum() or c.isspace())
-    query = urllib.parse.quote(clean_item)
-    url = f"https://www.swiggy.com/instamart/search?custom_back=true&query={query}"
-    print(f"[Instamart] Searching for: {clean_item}")
-    try:
-        await page.goto(url, timeout=60000, wait_until="commit")
-        await asyncio.sleep(5)
-        await page.evaluate("""
-            () => {
-                const buttons = document.querySelectorAll("button, div");
-                for (let btn of buttons) {
-                    let txt = btn.textContent.trim().toUpperCase();
-                    if (txt === 'ADD' || txt.includes('ADD TO CART')) {
-                        btn.click();
-                        return true;
-                    }
-                }
-                return false;
-            }
-        """)
-        await asyncio.sleep(2)
-    except Exception as e:
-        print(f"[Instamart] Error adding {item}: {e}")
+    except:
+        return "Error"
 
 async def compare_prices(items_text):
-    try:
-        # Global timeout of 5 mins
-        return await asyncio.wait_for(_compare_prices_internal(items_text), timeout=300.0)
-    except asyncio.TimeoutError:
-        return "❌ **Timeout Error:** Bot ko result nahi mil pa raha. Shayad platform ne block kar diya hai. Kripya thodi der baad try karein."
-    except Exception as e:
-        return f"❌ **General Error:** {str(e)}"
-
-async def _compare_prices_internal(items_text):
-    if ',' in items_text:
-        items_list = [i.strip() for i in items_text.split(',')]
-    else:
-        items_list = [i.strip() for i in items_text.split('\n')]
-    items_list = [i for i in items_list if i]
-
+    items_list = [i.strip() for i in (items_text.split(',') if ',' in items_text else items_text.split('\n')) if i.strip()]
     results = {}
-    
+    screenshots = {}
+
     async with async_playwright() as p:
-        print("[System] Launching Chromium...")
-        # Switching to Chromium as it's often more stable for automation
         browser = await p.chromium.launch(headless=True)
+        # Using Mobile Viewport for simpler UI
         context = await browser.new_context(
-            viewport={'width': 1280, 'height': 800},
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            viewport={'width': 375, 'height': 812},
+            is_mobile=True,
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1",
             geolocation={"latitude": 12.9716, "longitude": 77.5946},
             permissions=["geolocation"]
         )
         page = await context.new_page()
-        await page.route("**/*", block_aggressively)
+        await page.route("**/*", block_media)
 
-        # Zepto
-        try:
-            print("--- Starting Zepto ---")
-            for item in items_list:
-                await search_and_add_zepto(page, item)
-            results['Zepto'] = await page.evaluate("""
-                () => {
-                    let el = document.querySelector("[data-testid='cart-btn'], .cart-button, #cart-button");
-                    if (el) return el.innerText.split('\\n').join(' ');
-                    // Try finding any text with ₹
-                    let items = document.querySelectorAll("div, span, p");
-                    for (let it of items) {
-                        if (it.innerText.includes('₹') && it.innerText.toLowerCase().includes('cart')) {
-                            return it.innerText.split('\\n').join(' ');
-                        }
-                    }
-                    return "Not Found";
-                }
-            """)
-            print(f"[Zepto] Final: {results['Zepto']}")
-        except Exception as e:
-            print(f"[Zepto] Failed: {e}")
-            results['Zepto'] = "Error"
+        platforms = {
+            "Zepto": "https://www.zepto.com/search?q=",
+            "Blinkit": "https://blinkit.com/s/?q=",
+            "Swiggy Instamart": "https://www.swiggy.com/instamart/search?query="
+        }
 
-        # Blinkit
-        try:
-            print("--- Starting Blinkit ---")
+        for name, base_url in platforms.items():
+            print(f"--- Starting {name} ---")
             for item in items_list:
-                await search_and_add_blinkit(page, item)
-            results['Blinkit'] = await page.evaluate("""
-                () => {
-                    let els = document.querySelectorAll("div, button");
-                    for(let e of els){
-                        if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                            return e.innerText.split('\\n').join(' ');
-                        }
-                    }
-                    return "Not Found";
-                }
-            """)
-            print(f"[Blinkit] Final: {results['Blinkit']}")
-        except Exception as e:
-            print(f"[Blinkit] Failed: {e}")
-            results['Blinkit'] = "Error"
-
-        # Instamart
-        try:
-            print("--- Starting Instamart ---")
-            for item in items_list:
-                await search_and_add_instamart(page, item)
-            results['Swiggy Instamart'] = await page.evaluate("""
-                () => {
-                    let els = document.querySelectorAll("div, button, a");
-                    for(let e of els){
-                        if(e.textContent.includes('View Cart') && e.textContent.includes('₹')){
-                            return e.innerText.split('\\n').join(' ');
-                        }
-                    }
-                    return "Not Found";
-                }
-            """)
-            print(f"[Instamart] Final: {results['Swiggy Instamart']}")
-        except Exception as e:
-            print(f"[Instamart] Failed: {e}")
-            results['Swiggy Instamart'] = "Error"
+                query = urllib.parse.quote(item)
+                await search_and_add_generic(page, name, item, base_url + query)
+            
+            results[name] = await get_cart_value(page, name)
+            
+            # Take debug screenshot
+            ss_path = f"/tmp/{name.replace(' ', '_').lower()}.png"
+            await page.screenshot(path=ss_path)
+            screenshots[name] = ss_path
 
         await browser.close()
-        print("[System] Browser closed.")
 
-    output = ["🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n", "📊 **CART TOTALS:**"]
+    summary = ["🛒 **ITEMS SEARCHED:**\n" + ", ".join(items_list) + "\n", "📊 **CART TOTALS:**"]
     for platform, value in results.items():
-        output.append(f"**{platform}**: {value}")
+        summary.append(f"**{platform}**: {value}")
     
-    return "\n".join(output)
+    return {"text": "\n".join(summary), "screenshots": screenshots}
